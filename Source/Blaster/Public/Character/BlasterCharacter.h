@@ -6,7 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Blaster/Public/BlasterTypes/TurningInPlace.h"
 #include "Blaster/Public/Interfaces/InteractWithCrosshairsInterface.h"
-
+#include "Components/TimelineComponent.h"
 
 #include "BlasterCharacter.generated.h"
 
@@ -75,6 +75,8 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastElim();
 
+	virtual void Destroyed() override;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -106,6 +108,10 @@ protected:
 
 	UFUNCTION()
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+	
+	// Poll for any relelvant classes and initialize our HUD
+	void PollInit();
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	USpringArmComponent* CameraBoom;
@@ -170,6 +176,7 @@ private:
 	UFUNCTION()
 	void OnRep_Health();
 
+	UPROPERTY()
 	class ABlasterPlayerController* BlasterPlayerController;
 
 	bool bElimmed = false;
@@ -180,6 +187,38 @@ private:
 	float ElimDelay = 3.f;
 
 	void ElimTimerFinished();
+
+	//Dissolve effect
+
+	UPROPERTY(VisibleAnywhere, Category = "Elim")
+	UTimelineComponent* DissolveTimeline;
+	FOnTimelineFloat DissolveTrack;
+	UPROPERTY(EditAnywhere, Category = "Elim")
+	UCurveFloat* DissolveCurve;
+
+	UFUNCTION()
+	void UpdateDissolveMaterial(float DissolveValue);
+	void StartDissolve();
+
+	UPROPERTY(VisibleAnywhere, Category = "Elim")
+	UMaterialInstanceDynamic* DynamicDissolveMaterialInstance;
+
+	//Material instance set on the blueprint, used with the dynamic material instance
+	UPROPERTY(EditAnywhere, Category = "Elim")
+	UMaterialInstance* DissolveMaterialInstance;
+
+	//Elim bot
+	UPROPERTY(EditAnywhere, Category = "Elim")
+	UParticleSystem* ElimBotEffect;
+
+	UPROPERTY(VisibleAnywhere, Category = "Elim")
+	UParticleSystemComponent* ElimBotEffectComponent;
+
+	UPROPERTY(EditAnywhere, Category = "Elim")
+	class USoundCue* ElimBotSound;
+
+	UPROPERTY()
+	class ABlasterPlayerState* BlasterPlayerState;
 
 //Get Set
 public:
@@ -197,12 +236,16 @@ public:
 	FORCEINLINE UCameraComponent* GetFollowCamera() const {
 		return FollowCamera;
 	}
-
 	FORCEINLINE bool ShouldRotateRootBone() const {
 		return bRotateRootBone;
 	}
-
 	FORCEINLINE bool IsElimmed() const {
 		return bElimmed;
+	}
+	FORCEINLINE float GetHealth() const {
+		return Health;
+	}
+	FORCEINLINE float GetMaxHealth() const {
+		return MaxHealth;
 	}
 };

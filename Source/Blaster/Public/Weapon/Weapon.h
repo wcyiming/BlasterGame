@@ -27,8 +27,13 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void OnRep_Owner() override;
+
 	void ShowPickupWidget(bool bShowWidget);
 	virtual void Fire(const FVector& HitTarget);
+	void Dropped();
+
+	void SetHUDAmmo();
 
 	/**
 	* Textures for the weapon's crosshair.
@@ -107,6 +112,22 @@ private:
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<class ACasing> CasingClass;
 
+	UPROPERTY(ReplicatedUsing = OnRep_Ammo, EditAnywhere)
+	int32 Ammo = 30;
+
+	UFUNCTION()
+	void OnRep_Ammo();
+
+	void SpendRound();
+
+	UPROPERTY(EditAnywhere)
+	int32 MagCapacity = 30;
+
+	UPROPERTY()
+	class ABlasterCharacter* BlasterOwnerCharacter;
+	UPROPERTY()
+	class ABlasterPlayerController* BlasterOwnerController;
+
 
 public:
 	void SetWeaponState(EWeaponState State);
@@ -125,5 +146,9 @@ public:
 
 	FORCEINLINE float GetZoomInterpSpeed() const {
 		return ZoomInterpSpeed;
+	}
+
+	bool IsEmpty() const {
+		return Ammo <= 0;
 	}
 };

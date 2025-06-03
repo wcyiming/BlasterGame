@@ -57,6 +57,13 @@ void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	}
 }
 
+void UCombatComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const {
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UCombatComponent, EquippedWeapon);
+	DOREPLIFETIME(UCombatComponent, bAiming);
+}
+
 void UCombatComponent::SetAiming(bool bIsAiming) {
 	bAiming = bIsAiming;
 	if (!FatherCharacter->HasAuthority()) {
@@ -124,6 +131,13 @@ void UCombatComponent::FireTimerFinished() {
 	}
 }
 
+bool UCombatComponent::CanFire() {
+	if (EquippedWeapon == nullptr || FatherCharacter == nullptr) {
+		return false;
+	}
+	return !EquippedWeapon->IsEmpty() && bCanFire;
+}
+
 void UCombatComponent::FireButtonPressed(bool bPressed) {
 	bFireButtonPressed = bPressed;
 	if (bFireButtonPressed) {
@@ -132,7 +146,7 @@ void UCombatComponent::FireButtonPressed(bool bPressed) {
 }
 
 void UCombatComponent::Fire() {
-	if (bCanFire) {
+	if (CanFire()) {
 		ServerFire(CrosshairHitTarget);
 		if (EquippedWeapon) {
 			CrosshairShootingFactor += 0.5f;
@@ -156,16 +170,13 @@ void UCombatComponent::ServerFire_Implementation(const FVector_NetQuantize& Trac
 	MulticastFire(TraceHitTarget);
 }
 
-void UCombatComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const {
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME(UCombatComponent, EquippedWeapon);
-	DOREPLIFETIME(UCombatComponent, bAiming);
-}
-
 void UCombatComponent::EquipWeapon(AWeapon* WeaponToEquip) {
 	if (FatherCharacter == nullptr || WeaponToEquip == nullptr) {
 		return;
+	}
+
+	if (EquippedWeapon) {
+		EquippedWeapon->Dropped();
 	}
 
 	EquippedWeapon = WeaponToEquip;
@@ -175,12 +186,18 @@ void UCombatComponent::EquipWeapon(AWeapon* WeaponToEquip) {
 		HandSocket->AttachActor(EquippedWeapon, FatherCharacter->GetMesh());
 	}
 	EquippedWeapon->SetOwner(FatherCharacter);
+	EquippedWeapon->SetHUDAmmo();
 	FatherCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
 	FatherCharacter->bUseControllerRotationYaw = true;
 }
 
 void UCombatComponent::OnRep_EquippedWeapon() {
 	if (EquippedWeapon && FatherCharacter) {
+		EquippedWeapon->SetWeaponState(EWeaponState::EWS_Equipped);
+		const USkeletalMeshSocket* HandSocket = FatherCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
+		if (HandSocket) {
+			HandSocket->AttachActor(EquippedWeapon, FatherCharacter->GetMesh());
+		}
 		FatherCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
 		FatherCharacter->bUseControllerRotationYaw = true;
 	}

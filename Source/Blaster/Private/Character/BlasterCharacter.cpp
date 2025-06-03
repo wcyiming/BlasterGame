@@ -18,8 +18,12 @@
 #include "Blaster/Public/PlayerController/BlasterPlayerController.h"
 #include "Blaster/Public/GameMode/BlasterGameMode.h"
 #include "TimerManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundCue.h"
+#include "Particles/ParticleSystemComponent.h"
 
 #include "Blaster/Public/Character/BlasterAnimInstance.h"
+#include "Blaster/Public/PlayerState/BlasterPlayerState.h"
 
 // Sets default values
 ABlasterCharacter::ABlasterCharacter()
@@ -58,6 +62,8 @@ ABlasterCharacter::ABlasterCharacter()
 	TurningInPlace = ETurningInPlace::ETIP_NotTurning;
 	NetUpdateFrequency = 66.f;
 	MinNetUpdateFrequency = 33.f;
+
+	DissolveTimeline = CreateDefaultSubobject<UTimelineComponent>(TEXT("DissolveTimeline"));
 }
 
 void ABlasterCharacter::OnRep_ReplicatedMovement() {
@@ -65,6 +71,13 @@ void ABlasterCharacter::OnRep_ReplicatedMovement() {
 
 	SimProxiesTurn(0.f);
 	TimeSinceLastMovementReplication = 0.f;
+}
+
+void ABlasterCharacter::Destroyed() {
+	Super::Destroyed();
+	if (ElimBotEffectComponent) {
+		ElimBotEffectComponent->DestroyComponent();
+	}
 }
 
 // Called when the game starts or when spawned
@@ -100,6 +113,7 @@ void ABlasterCharacter::Tick(float DeltaTime)
 		CalculateAO_Pitch();
 	}
 	HideCameraIfCharacterClose();
+	PollInit();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -231,6 +245,10 @@ void ABlasterCharacter::PlayElimMontage() {
 
 //Only on server
 void ABlasterCharacter::Elim() {
+	if (Combat && Combat->EquippedWeapon) {
+		Combat->EquippedWeapon->Dropped();
+	}
+
 	MulticastElim();
 	GetWorldTimerManager().SetTimer(
 		ElimTimer, 
@@ -240,9 +258,57 @@ void ABlasterCharacter::Elim() {
 }
 
 void ABlasterCharacter::MulticastElim_Implementation() {
+	if (BlasterPlayerController) {
+		BlasterPlayerController->SetHUDWeaponAmmo(0);
+	}
+
 	bElimmed = true;
-	//GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Ignore);
 	PlayElimMontage();
+
+	//Start dissolve effect
+	if (DissolveMaterialInstance) {
+		DynamicDissolveMaterialInstance = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
+		GetMesh()->SetMaterial(0, DynamicDissolveMaterialInstance);
+		DynamicDissolveMaterialInstance->SetScalarParameterValue(FName("Dissolve"), 0.55f);
+		DynamicDissolveMaterialInstance->SetScalarParameterValue(FName("Glow"), 200.f);
+	}
+	StartDissolve();
+
+	//Disable character movement
+	GetCharacterMovement()->DisableMovement();
+	GetCharacterMovement()->StopMovementImmediately();
+	if (BlasterPlayerController) {
+		DisableInput(BlasterPlayerController);
+	}
+	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent)) {
+		EIC->Deactivate();
+	}
+
+	//Disable collsion
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	//Spawn elim bot
+	if (ElimBotEffect) {
+		FVector ElimBotSpawnPoint(
+			GetActorLocation().X,
+			GetActorLocation().Y,
+			GetActorLocation().Z + 200.f
+		);
+		UGameplayStatics::SpawnEmitterAtLocation(
+			GetWorld(),
+			ElimBotEffect,
+			ElimBotSpawnPoint,
+			GetActorRotation()
+		);
+	}
+	if (ElimBotSound) {
+		UGameplayStatics::PlaySoundAtLocation(
+			this,
+			ElimBotSound,
+			GetActorLocation()
+		);
+	}
 }
 
 void ABlasterCharacter::ElimTimerFinished() {
@@ -388,6 +454,16 @@ void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const 
 
 }
 
+void ABlasterCharacter::PollInit() {
+	if (BlasterPlayerState == nullptr) {
+		BlasterPlayerState = GetPlayerState<ABlasterPlayerState>();
+		if (BlasterPlayerState) {
+			BlasterPlayerState->AddToScore(0.f);
+			BlasterPlayerState->AddToDefeats(0);
+		}
+	}
+}
+
 void ABlasterCharacter::Jump() {
 	if (bIsCrouched) {
 		UnCrouch();
@@ -452,6 +528,20 @@ void ABlasterCharacter::OnRep_Health() {
 
 }
 
+
+void ABlasterCharacter::UpdateDissolveMaterial(float DissolveValue) {
+	if (DynamicDissolveMaterialInstance) {
+		DynamicDissolveMaterialInstance->SetScalarParameterValue(FName("Dissolve"), DissolveValue);
+	}
+}
+
+void ABlasterCharacter::StartDissolve() {
+	DissolveTrack.BindDynamic(this, &ABlasterCharacter::UpdateDissolveMaterial);
+	if (DissolveCurve) {
+		DissolveTimeline->AddInterpFloat(DissolveCurve, DissolveTrack);
+		DissolveTimeline->Play();
+	}
+}
 
 void ABlasterCharacter::SetOverlappingWeapon(AWeapon* Weapon) {
 	if (OverlappingWeapon) {
