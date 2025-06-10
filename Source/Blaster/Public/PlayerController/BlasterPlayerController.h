@@ -19,13 +19,76 @@ public:
 	void SetHUDScore(float Score);
 	void SetHUDDefeats(int32 Defeats);
 	void SetHUDWeaponAmmo(int32 Ammo);
+	void SetHUDCarriedAmmo(int32 Ammo);
+	void SetHUDMatchCountdown(float CountdownTime);
+	void SetHUDAnnouncementCountdown(float CountdownTime);
 
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	void CheckTimeSync(float DeltaTime);
+	virtual float GetServerTime();
+	virtual void ReceivedPlayer() override; // Sync with server clock time as soon as the player is received
+
+	void OnMatchStateSet(FName State);
+	void HandleMatchHasStarted();
+	void HandleCooldown();
 
 protected:
 	virtual void BeginPlay() override;
+	void SetHUDTime();
+
+	//Sync time between client and server
+
+	// Request the current server time, passing in the client's time when the request was made
+	UFUNCTION(Server, Reliable)
+	void ServerRequestServerTime(float TimeOfClientRequest);
+
+	// Reports the current server time back to the client in response to the ServerRequestServerTime call
+	UFUNCTION(Client, Reliable)
+	void ClientReportServerTime(float TimeOfClientRequest, float TimeServerReceivedClientRequest);
+
+	float ClientServerDelta = 0.f; // The difference between the client and server time, used to sync time
+
+	UPROPERTY(EditAnywhere, Category = "Time Sync")
+	float TimeSyncFrequency = 5.f;
+
+	float TimeSyncRunningTime = 0.f; // Tracks how long the time sync has been running
+
+	void PollInit();
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheckMatchState();
+
+	UFUNCTION(Client, Reliable)
+	void ClientJoinMidgame(FName StateOfMatch, float Warmup, float Match, float Cooldown, float StartingTime);
 
 private:
 	UPROPERTY()
 	class ABlasterHUD* BlasterHUD;
+	UPROPERTY()
+	class ABlasterGameMode* BlasterGameMode;
+
+	float LevelStartingTime = 0.f; // Time when level started, used for match time calculation
+	float MatchTime = 120.f;
+	float WarmupTime = 0.f;
+	float CooldownTime = 10.f; // Time before match starts
+
+	uint32 CountdownInt = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_MatchState)
+	FName MatchState;
+	UFUNCTION()
+	void OnRep_MatchState();
+
+	UPROPERTY()
+	class UCharacterOverlay* CharacterOverlay;
+	bool bInitializeCharacterOverlay = false;
+
+	float HUDHealth;
+	float HUDMaxHealth;
+	float HUDScore;
+	int32 HUDDefeats;
+
 };

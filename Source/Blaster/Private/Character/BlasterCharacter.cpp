@@ -24,6 +24,7 @@
 
 #include "Blaster/Public/Character/BlasterAnimInstance.h"
 #include "Blaster/Public/PlayerState/BlasterPlayerState.h"
+#include "Blaster/Public/Weapon/WeaponTypes.h"
 
 // Sets default values
 ABlasterCharacter::ABlasterCharacter()
@@ -103,6 +104,12 @@ void ABlasterCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	RotateInPlace(DeltaTime);
+	HideCameraIfCharacterClose();
+	PollInit();
+}
+
+void ABlasterCharacter::RotateInPlace(float DeltaTime) {
 	if (GetLocalRole() > ENetRole::ROLE_SimulatedProxy && IsLocallyControlled()) {
 		AimOffset(DeltaTime);
 	} else {
@@ -112,8 +119,6 @@ void ABlasterCharacter::Tick(float DeltaTime)
 		}
 		CalculateAO_Pitch();
 	}
-	HideCameraIfCharacterClose();
-	PollInit();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -157,6 +162,8 @@ void ABlasterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		//Attack
 		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABlasterCharacter::AttackButtonPressed);
 		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Completed, this, &ABlasterCharacter::AttackButtonReleased);
+
+		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ABlasterCharacter::ReloadButtonPressed);
 
 	} else {
 		UE_LOG(LogTemp, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
@@ -204,6 +211,7 @@ void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 	DOREPLIFETIME_CONDITION(ABlasterCharacter, OverlappingWeapon, COND_OwnerOnly);
 	DOREPLIFETIME(ABlasterCharacter, Health);
+	DOREPLIFETIME(ABlasterCharacter, bDisableGameplay);
 }
 
 void ABlasterCharacter::PostInitializeComponents() {
@@ -225,6 +233,26 @@ void ABlasterCharacter::PlayFireMontage(bool bAiming) {
 	}
 }
 
+void ABlasterCharacter::PlayReloadMontage() {
+	if (Combat == nullptr || Combat->EquippedWeapon == nullptr) return;
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && ReloadMontage) {
+		AnimInstance->Montage_Play(ReloadMontage);
+		FName SectionName;
+		
+		switch (Combat->EquippedWeapon->GetWeaponType()) {
+		case EWeaponType::EWT_AssaultRifle:
+			SectionName = FName("Rifle");
+			break;
+		default:
+			break;
+		}
+
+		AnimInstance->Montage_JumpToSection(SectionName, ReloadMontage);
+	}
+}
+
 void ABlasterCharacter::PlayHitReactMontage() {
 	if (Combat == nullptr || Combat->EquippedWeapon == nullptr) return;
 
@@ -242,6 +270,7 @@ void ABlasterCharacter::PlayElimMontage() {
 		AnimInstance->Montage_Play(ElimMontage);
 	}
 }
+
 
 //Only on server
 void ABlasterCharacter::Elim() {
@@ -273,6 +302,10 @@ void ABlasterCharacter::MulticastElim_Implementation() {
 		DynamicDissolveMaterialInstance->SetScalarParameterValue(FName("Glow"), 200.f);
 	}
 	StartDissolve();
+	
+	if (Combat) {
+		Combat->FireButtonPressed(false);
+	}
 
 	//Disable character movement
 	GetCharacterMovement()->DisableMovement();
@@ -352,12 +385,14 @@ void ABlasterCharacter::CrouchButtonPressed(const FInputActionValue& Value) {
 }
 
 void ABlasterCharacter::AimButtonPressed(const FInputActionValue& Value) {
+	if (bDisableGameplay) return;
 	if (Combat) {
 		Combat->SetAiming(true);
 	}
 }
 
 void ABlasterCharacter::AimButtonReleased(const FInputActionValue& Value) {
+	if (bDisableGameplay) return;
 	if (Combat) {
 		Combat->SetAiming(false);
 	}
@@ -473,14 +508,23 @@ void ABlasterCharacter::Jump() {
 }
 
 void ABlasterCharacter::AttackButtonPressed(const FInputActionValue& Value) {
+	if (bDisableGameplay) return;
 	if (Combat) {
 		Combat->FireButtonPressed(true);
 	}
 }
 
 void ABlasterCharacter::AttackButtonReleased(const FInputActionValue& Value) {
+	if (bDisableGameplay) return;
 	if (Combat) {
 		Combat->FireButtonPressed(false);
+	}
+}
+
+void ABlasterCharacter::ReloadButtonPressed(const FInputActionValue& Value) {
+	if (bDisableGameplay) return;
+	if (Combat) {
+		Combat->Reload();
 	}
 }
 
@@ -574,4 +618,11 @@ FVector ABlasterCharacter::GetHitTarget() const {
 		return FVector();
 	}
 	return Combat->CrosshairHitTarget;
+}
+
+ECombatState ABlasterCharacter::GetCombatState() const {
+	if (Combat == nullptr) {
+		return ECombatState::ECS_MAX;
+	}
+	return Combat->CombatState;
 }

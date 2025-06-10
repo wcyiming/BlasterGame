@@ -4,6 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Blaster/Public/Weapon/WeaponTypes.h"
+
+
 #include "Weapon.generated.h"
 
 UENUM(BlueprintType)
@@ -32,6 +35,7 @@ public:
 	void ShowPickupWidget(bool bShowWidget);
 	virtual void Fire(const FVector& HitTarget);
 	void Dropped();
+	void AddAmmo(int32 AmmoToAdd);
 
 	void SetHUDAmmo();
 
@@ -67,6 +71,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	bool bAutomatic = true;
+
+	UPROPERTY(EditAnywhere)
+	class USoundCue* EquipSound;
 
 protected:
 	// Called when the game starts or when spawned
@@ -128,27 +135,18 @@ private:
 	UPROPERTY()
 	class ABlasterPlayerController* BlasterOwnerController;
 
+	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
+	EWeaponType WeaponType;
 
 public:
 	void SetWeaponState(EWeaponState State);
 
-	FORCEINLINE USphereComponent* GetAreaShpere() const {
-		return AreaSphere;
-	}
-
-	FORCEINLINE USkeletalMeshComponent* GetWeaponMesh() const {
-		return WeaponMesh;
-	}
-
-	FORCEINLINE float GetZoomedFOV() const {
-		return ZoomedFOV;
-	}
-
-	FORCEINLINE float GetZoomInterpSpeed() const {
-		return ZoomInterpSpeed;
-	}
-
-	bool IsEmpty() const {
-		return Ammo <= 0;
-	}
+	FORCEINLINE USphereComponent* GetAreaShpere() const { return AreaSphere; }
+	FORCEINLINE USkeletalMeshComponent* GetWeaponMesh() const { return WeaponMesh; }
+	FORCEINLINE float GetZoomedFOV() const { return ZoomedFOV; }
+	FORCEINLINE float GetZoomInterpSpeed() const { return ZoomInterpSpeed; }
+	bool IsEmpty() const { return Ammo <= 0;}
+	FORCEINLINE EWeaponType GetWeaponType() const { return WeaponType; }
+	FORCEINLINE int32 GetAmmo() const { return Ammo; }
+	FORCEINLINE int32 GetMagCapacity() const { return MagCapacity; }
 };

@@ -7,6 +7,7 @@
 #include "Blaster/Public/BlasterTypes/TurningInPlace.h"
 #include "Blaster/Public/Interfaces/InteractWithCrosshairsInterface.h"
 #include "Components/TimelineComponent.h"
+#include "Blaster/Public/BlasterTypes/CombatState.h"
 
 #include "BlasterCharacter.generated.h"
 
@@ -57,14 +58,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* AttackAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* ReloadAction;
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+	void RotateInPlace(float DeltaTime);
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PostInitializeComponents() override;
 	
 	void PlayFireMontage(bool bAiming);
 	void PlayHitReactMontage();
 	void PlayElimMontage();
+	void PlayReloadMontage();
 
 	virtual void OnRep_ReplicatedMovement() override;
 
@@ -76,6 +82,9 @@ public:
 	void MulticastElim();
 
 	virtual void Destroyed() override;
+
+	UPROPERTY(Replicated)
+	bool bDisableGameplay = false;
 
 protected:
 	// Called when the game starts or when spawned
@@ -103,6 +112,8 @@ protected:
 
 	void AttackButtonPressed(const FInputActionValue& Value);
 	void AttackButtonReleased(const FInputActionValue& Value);
+
+	void ReloadButtonPressed(const FInputActionValue& Value);
 
 	void SimProxiesTurn(float DeltaTime);
 
@@ -132,7 +143,7 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerEquipButtonPressed();
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCombatComponent* Combat;
 
 	float AO_YAW;
@@ -151,6 +162,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	class UAnimMontage* ElimMontage;
+
+	UPROPERTY(EditAnywhere, Category = Combat)
+	class UAnimMontage* ReloadMontage;
 
 	void HideCameraIfCharacterClose();
 
@@ -228,24 +242,15 @@ public:
 	FORCEINLINE float GetAO_Yaw() const { return AO_YAW;  }
 	FORCEINLINE float GetAO_Pitch() const { return AO_Pitch; }
 	AWeapon* GetEquippedWeapon();
-	FORCEINLINE ETurningInPlace GetTurningInPlace() const {
-		return TurningInPlace;
-	}
+	FORCEINLINE ETurningInPlace GetTurningInPlace() const { return TurningInPlace; }
 	FVector GetHitTarget() const;
 
-	FORCEINLINE UCameraComponent* GetFollowCamera() const {
-		return FollowCamera;
-	}
-	FORCEINLINE bool ShouldRotateRootBone() const {
-		return bRotateRootBone;
-	}
-	FORCEINLINE bool IsElimmed() const {
-		return bElimmed;
-	}
-	FORCEINLINE float GetHealth() const {
-		return Health;
-	}
-	FORCEINLINE float GetMaxHealth() const {
-		return MaxHealth;
-	}
+	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	FORCEINLINE bool ShouldRotateRootBone() const { return bRotateRootBone; }
+	FORCEINLINE bool IsElimmed() const { return bElimmed; }
+	FORCEINLINE float GetHealth() const { return Health; }
+	FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
+	ECombatState GetCombatState() const;
+
+	FORCEINLINE UCombatComponent* GetCombat() const { return Combat; }
 };
