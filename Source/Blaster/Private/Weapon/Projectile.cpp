@@ -8,6 +8,9 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Particles/ParticleSystem.h"
 #include "Sound/SoundCue.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
+
 #include "Blaster/Public/Character/BlasterCharacter.h"
 #include "Blaster/Blaster.h"
 
@@ -27,8 +30,6 @@ AProjectile::AProjectile()
 	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldStatic, ECollisionResponse::ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECC_SkeletalMesh, ECollisionResponse::ECR_Block);
 
-	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
-	ProjectileMovementComponent->bRotationFollowsVelocity = true;
 }
 
 // Called when the game starts or when spawned
@@ -52,6 +53,15 @@ void AProjectile::BeginPlay()
 	}
 }
 
+void AProjectile::StartDestroyTimer() {
+	GetWorldTimerManager().SetTimer(
+		DestroyTimerHandle,
+		this,
+		&AProjectile::DestroyTimerFinished,
+		DestroyTime
+	);
+}
+
 void AProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit) {
 
 	Destroy();
@@ -63,6 +73,47 @@ void AProjectile::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 }
+
+void AProjectile::SpawnTrailSystem() {
+	if (TrailSystem) {
+		TrailComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+			TrailSystem,
+			GetRootComponent(),
+			FName(),
+			GetActorLocation(),
+			GetActorRotation(),
+			EAttachLocation::KeepWorldPosition,
+			false
+		);
+	}
+}
+
+void AProjectile::DestroyTimerFinished() {
+	Destroy();
+}
+
+void AProjectile::ExplodeDamage() {
+	APawn* FirerPawn = GetInstigator();
+	if (FirerPawn && HasAuthority()) {
+		AController* InstigatorController = FirerPawn->GetController();
+		if (InstigatorController) {
+			UGameplayStatics::ApplyRadialDamageWithFalloff(
+				this,
+				Damage,
+				Damage * 0.5f, // Minimum damage at the edge of the radius
+				GetActorLocation(),
+				DamageInnerRadius,
+				DamageOuterRadius,
+				1.0f, // Damage falloff
+				UDamageType::StaticClass(),
+				TArray<AActor*>(), // Ignore no actors
+				this,
+				InstigatorController
+			);
+		}
+	}
+}
+
 
 void AProjectile::Destroyed() {
 	Super::Destroyed();
@@ -81,4 +132,5 @@ void AProjectile::Destroyed() {
 		);
 	}
 }
+
 

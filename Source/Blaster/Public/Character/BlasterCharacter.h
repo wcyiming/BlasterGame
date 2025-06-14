@@ -61,6 +61,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* ReloadAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* ThrowGrenadeAction;
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	void RotateInPlace(float DeltaTime);
@@ -71,6 +74,7 @@ public:
 	void PlayHitReactMontage();
 	void PlayElimMontage();
 	void PlayReloadMontage();
+	void PlayThrowGrenadeMontage();
 
 	virtual void OnRep_ReplicatedMovement() override;
 
@@ -86,11 +90,16 @@ public:
 	UPROPERTY(Replicated)
 	bool bDisableGameplay = false;
 
+	UFUNCTION(BlueprintImplementableEvent)
+	void ShowSniperScopeWidget(bool bShowScope);
+
+	void UpdateHUDHealth();
+
+	void UpdateHUDShield();
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-
-	void UpdateHUDHealth();
 
 	virtual void NotifyControllerChanged() override;
 
@@ -106,6 +115,8 @@ protected:
 	void CrouchButtonPressed(const FInputActionValue& Value);
 	void AimButtonPressed(const FInputActionValue& Value);
 	void AimButtonReleased(const FInputActionValue& Value);
+	void GrenadeButtonPressed(const FInputActionValue& Value);
+
 	void AimOffset(float DeltaTime);
 	void CalculateAO_Pitch();
 	virtual void Jump() override;
@@ -146,6 +157,9 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCombatComponent* Combat;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	class UBuffComponent* Buff;
+
 	float AO_YAW;
 	float InterpAO_Yaw;
 	float AO_Pitch;
@@ -165,6 +179,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	class UAnimMontage* ReloadMontage;
+
+	UPROPERTY(EditAnywhere, Category = Combat)
+	class UAnimMontage* ThrowGrenadeMontage;
 
 	void HideCameraIfCharacterClose();
 
@@ -188,7 +205,17 @@ private:
 	float Health = 100.f;
 
 	UFUNCTION()
-	void OnRep_Health();
+	void OnRep_Health(float LastHealth);
+
+	// Shield
+	UPROPERTY(EditAnywhere, Category = "Player Stats", meta = (AllowPrivateAccess = "true"))
+	float MaxShield = 100.f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Shield, VisibleAnywhere, Category = "Player Stats", meta = (AllowPrivateAccess = "true"))
+	float Shield = 100.f;
+
+	UFUNCTION()
+	void OnRep_Shield(float LastShield);
 
 	UPROPERTY()
 	class ABlasterPlayerController* BlasterPlayerController;
@@ -234,6 +261,11 @@ private:
 	UPROPERTY()
 	class ABlasterPlayerState* BlasterPlayerState;
 
+	//Grenade
+
+	UPROPERTY(VisibleAnywhere)
+	UStaticMeshComponent* AttachedGrenade;
+
 //Get Set
 public:
 	void SetOverlappingWeapon(AWeapon* Weapon);
@@ -249,8 +281,15 @@ public:
 	FORCEINLINE bool ShouldRotateRootBone() const { return bRotateRootBone; }
 	FORCEINLINE bool IsElimmed() const { return bElimmed; }
 	FORCEINLINE float GetHealth() const { return Health; }
+	FORCEINLINE void SetHealth(float NewHealth) { Health = NewHealth; }
 	FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
-	ECombatState GetCombatState() const;
+	FORCEINLINE float GetShield() const { return Shield; }
+	FORCEINLINE void SetShield(float NewShield) { Shield = NewShield; }
+	FORCEINLINE float GetMaxShield() const { return MaxShield; }
 
+	ECombatState GetCombatState() const;
 	FORCEINLINE UCombatComponent* GetCombat() const { return Combat; }
+	FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
+	FORCEINLINE UStaticMeshComponent* GetAttachedGrenade() const { return AttachedGrenade; }
+	FORCEINLINE UBuffComponent* GetBuff() const { return Buff; }
 };

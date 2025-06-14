@@ -10,21 +10,22 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
-#include "Blaster/Public/Weapon/Weapon.h"
-#include "Blaster/Public/BlasterComponents/CombatComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "Blaster/Blaster.h"
-#include "Blaster/Public/PlayerController/BlasterPlayerController.h"
-#include "Blaster/Public/GameMode/BlasterGameMode.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundCue.h"
 #include "Particles/ParticleSystemComponent.h"
 
+#include "Blaster/Blaster.h"
 #include "Blaster/Public/Character/BlasterAnimInstance.h"
 #include "Blaster/Public/PlayerState/BlasterPlayerState.h"
 #include "Blaster/Public/Weapon/WeaponTypes.h"
+#include "Blaster/Public/PlayerController/BlasterPlayerController.h"
+#include "Blaster/Public/GameMode/BlasterGameMode.h"
+#include "Blaster/Public/Weapon/Weapon.h"
+#include "Blaster/Public/BlasterComponents/CombatComponent.h"
+#include "Blaster/Public/BlasterComponents/BuffComponent.h"
 
 // Sets default values
 ABlasterCharacter::ABlasterCharacter()
@@ -53,6 +54,9 @@ ABlasterCharacter::ABlasterCharacter()
 	Combat = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
 	Combat->SetIsReplicated(true);
 
+	Buff = CreateDefaultSubobject<UBuffComponent>(TEXT("BuffComponent"));
+	Buff->SetIsReplicated(true);
+
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
 	GetMesh()->SetCollisionObjectType(ECC_SkeletalMesh);
@@ -65,6 +69,10 @@ ABlasterCharacter::ABlasterCharacter()
 	MinNetUpdateFrequency = 33.f;
 
 	DissolveTimeline = CreateDefaultSubobject<UTimelineComponent>(TEXT("DissolveTimeline"));
+
+	AttachedGrenade = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AttachedGrenade"));
+	AttachedGrenade->SetupAttachment(GetMesh(), FName("GrenadeSocket"));
+	AttachedGrenade->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void ABlasterCharacter::OnRep_ReplicatedMovement() {
@@ -87,8 +95,12 @@ void ABlasterCharacter::BeginPlay()
 	Super::BeginPlay();
 	
 	UpdateHUDHealth();
+	UpdateHUDShield();
 	if (HasAuthority()) {
 		OnTakeAnyDamage.AddDynamic(this, &ABlasterCharacter::ReceiveDamage);
+	}
+	if (AttachedGrenade) {
+		AttachedGrenade->SetVisibility(false);
 	}
 }
 
@@ -96,6 +108,13 @@ void ABlasterCharacter::UpdateHUDHealth() {
 	BlasterPlayerController = BlasterPlayerController ? BlasterPlayerController : Cast<ABlasterPlayerController>(GetController());
 	if (BlasterPlayerController) {
 		BlasterPlayerController->SetHUDHealth(Health, MaxHealth);
+	}
+}
+
+void ABlasterCharacter::UpdateHUDShield() {
+	BlasterPlayerController = BlasterPlayerController ? BlasterPlayerController : Cast<ABlasterPlayerController>(GetController());
+	if (BlasterPlayerController) {
+		BlasterPlayerController->SetHUDShield(Shield, MaxShield);
 	}
 }
 
@@ -165,6 +184,8 @@ void ABlasterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &ABlasterCharacter::ReloadButtonPressed);
 
+		EnhancedInputComponent->BindAction(ThrowGrenadeAction, ETriggerEvent::Started, this, &ABlasterCharacter::GrenadeButtonPressed);
+
 	} else {
 		UE_LOG(LogTemp, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
@@ -212,12 +233,20 @@ void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(ABlasterCharacter, OverlappingWeapon, COND_OwnerOnly);
 	DOREPLIFETIME(ABlasterCharacter, Health);
 	DOREPLIFETIME(ABlasterCharacter, bDisableGameplay);
+	DOREPLIFETIME(ABlasterCharacter, Shield);
 }
 
 void ABlasterCharacter::PostInitializeComponents() {
 	Super::PostInitializeComponents();
 	if (Combat) {
 		Combat->FatherCharacter = this;
+	}
+	if (Buff) {
+		Buff->FatherCharacter = this;
+		Buff->SetInitialSpeeds(GetCharacterMovement()->MaxWalkSpeed,
+			GetCharacterMovement()->MaxWalkSpeedCrouched
+		);
+		Buff->SetInitialJump(GetCharacterMovement()->JumpZVelocity);
 	}
 }
 
@@ -245,11 +274,36 @@ void ABlasterCharacter::PlayReloadMontage() {
 		case EWeaponType::EWT_AssaultRifle:
 			SectionName = FName("Rifle");
 			break;
+		case EWeaponType::EWT_RocketLauncher:
+			SectionName = FName("RocketLauncher");
+			break;
+		case EWeaponType::EWT_Pistol:
+			SectionName = FName("Pistol");
+			break;
+		case EWeaponType::EWT_SMG:
+			SectionName = FName("Pistol");
+			break;
+		case EWeaponType::EWT_Shotgun:
+			SectionName = FName("Shotgun");
+			break;
+		case EWeaponType::EWT_Sniper:
+			SectionName = FName("SniperRifle");
+			break;
+		case EWeaponType::EWT_GrenadeLauncher:
+			SectionName = FName("GrenadeLauncher");
+			break;
 		default:
 			break;
 		}
 
 		AnimInstance->Montage_JumpToSection(SectionName, ReloadMontage);
+	}
+}
+
+void ABlasterCharacter::PlayThrowGrenadeMontage() {
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && ThrowGrenadeMontage) {
+		AnimInstance->Montage_Play(ThrowGrenadeMontage);
 	}
 }
 
@@ -342,6 +396,11 @@ void ABlasterCharacter::MulticastElim_Implementation() {
 			GetActorLocation()
 		);
 	}
+
+	bool bHideSniperScope = IsLocallyControlled() && Combat && Combat->bAiming && Combat->EquippedWeapon && Combat->EquippedWeapon->GetWeaponType() == EWeaponType::EWT_Sniper;
+	if (bHideSniperScope) {
+		ShowSniperScopeWidget(false);
+	}
 }
 
 void ABlasterCharacter::ElimTimerFinished() {
@@ -395,6 +454,12 @@ void ABlasterCharacter::AimButtonReleased(const FInputActionValue& Value) {
 	if (bDisableGameplay) return;
 	if (Combat) {
 		Combat->SetAiming(false);
+	}
+}
+
+void ABlasterCharacter::GrenadeButtonPressed(const FInputActionValue& Value) {
+	if (Combat) {
+		Combat->ThrowGrenade();
 	}
 }
 
@@ -473,8 +538,21 @@ void ABlasterCharacter::SimProxiesTurn(float DeltaTime) {
 }
 
 void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser) {
-	Health = FMath::Clamp(Health - Damage, 0.f, MaxHealth);
+	if (bElimmed) return;
+	float DamageToHealth = Damage;
+	if (Shield > 0.f) {
+		if (Shield >= Damage) {
+			Shield = FMath::Clamp(Shield - Damage, 0.f, MaxShield);
+			DamageToHealth = 0.f;
+		} else {
+			DamageToHealth = FMath::Clamp(Damage - Shield, 0.f, Damage);
+			Shield = 0.f;
+		}
+	}
+
+	Health = FMath::Clamp(Health - DamageToHealth, 0.f, MaxHealth);
 	UpdateHUDHealth();
+	UpdateHUDShield();
 	PlayHitReactMontage();
 
 	if (Health <= 0.f) {
@@ -566,10 +644,19 @@ void ABlasterCharacter::HideCameraIfCharacterClose() {
 	}
 }
 
-void ABlasterCharacter::OnRep_Health() {
+void ABlasterCharacter::OnRep_Health(float LastHealth) {
 	UpdateHUDHealth();
-	PlayHitReactMontage();
+	if (Health < LastHealth) {
+		PlayHitReactMontage();
+	}
 
+}
+
+void ABlasterCharacter::OnRep_Shield(float LastShield) {
+	UpdateHUDShield();
+	if (Shield < LastShield) {
+		PlayHitReactMontage();
+	}
 }
 
 

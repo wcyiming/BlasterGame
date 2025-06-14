@@ -27,10 +27,28 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void EquipWeapon(AWeapon* WeaponToEquip);
+
 	void Reload();
 	UFUNCTION(BlueprintCallable)
 	void FinishReloading();
 	void FireButtonPressed(bool bPressed);
+
+	UFUNCTION(BlueprintCallable)
+	void ShotgunShellReload();
+
+	void JumpToShotgunEnd();
+
+	UFUNCTION(BlueprintCallable)
+	void ThrowGrenadeFinished();
+
+	UFUNCTION(BlueprintCallable)
+	void LaunchGrenade();
+
+	UFUNCTION(Server, Reliable)
+	void ServerLaunchGrenade(const FVector_NetQuantize& Target);
+
+
+	void PickupAmmo(EWeaponType WeaponType, int32 AmmoAmount);
 
 protected:
 	// Called when the game starts
@@ -63,6 +81,21 @@ protected:
 	void HandleReload();
 	int32 AmountToReload();
 
+	void ThrowGrenade();
+
+	UFUNCTION(Server, Reliable)
+	void ServerThrowGrenade();
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<class AProjectile> GrenadeClass;
+
+	void DropEquippedWeapon();
+	void AttachActorToRightHand(AActor* ActorToAttach);
+	void AttachActorToLeftHand(AActor* ActorToAttach);
+	void PlayEquipWeaponSound();
+	void UpdateCarriedAmmo();
+
+	void ShowAttachedGrenade(bool bShowGrenade);
 private:
 	UPROPERTY()
 	class ABlasterCharacter* FatherCharacter;
@@ -126,11 +159,29 @@ private:
 
 	TMap<EWeaponType, int32> CarriedAmmoMap;
 
+	UPROPERTY(EditAnywhere, Category = "Ammo")
+	int32 MaxCarriedAmmo = 200;
+
 	UPROPERTY(EditAnywhere)
 	int32 StartingARCarriedAmmo = 30;
 
 	UPROPERTY(EditAnywhere)
 	int32 StartingRocketAmmo = 0;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingPistolAmmo = 0;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingSmgAmmo = 0;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingShotgunAmmo = 0;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingSniperAmmo = 0;
+
+	UPROPERTY(EditAnywhere)
+	int32 StartingGrenadeLauncherAmmo = 0;
 
 	void InitializeCarriedAmmo();
 
@@ -140,4 +191,17 @@ private:
 	UFUNCTION()
 	void OnRep_CombatState();
 	void UpdateAmmoValues();
+	void UpdateShotgunAmmoValues();
+
+	UPROPERTY(ReplicatedUsing = OnRep_GrenadeCount)
+	int32 GrenadeCount = 0;
+
+	UFUNCTION()
+	void OnRep_GrenadeCount();
+	
+	UPROPERTY(EditAnywhere, Category = "Grenades")
+	int32 MaxGrenades = 4;
+
+	void UpdateHUDGrenades();
+
 };

@@ -27,15 +27,9 @@ protected:
 		const FHitResult& Hit
 	) override;
 	virtual void BeginPlay() override;
-	void DestroyTimerFinished();
 
-	UPROPERTY(EditAnywhere, Category = "Rocket")
-	class UNiagaraSystem* RocketTrailSystem;
 
-	UPROPERTY()
-	class UNiagaraComponent* RocketTrailComponent;
 
-	UPROPERTY(EditAnywhere, Category = "Rocket")
 	USoundCue* ProjectileLoop;
 
 	UPROPERTY()
@@ -44,14 +38,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Rocket")
 	USoundAttenuation* ProjectileLoopAttenuation;
 
+	UPROPERTY(VisibleAnywhere, Category = "Rocket")
+	class URocketMovementComponent* RocketMovementComponent;
+
 private:
-	UPROPERTY(VisibleAnywhere)
-	UStaticMeshComponent* RocketMesh;
 
-	FTimerHandle DestroyTimerHandle;
 
-	UPROPERTY(EditAnywhere, Category = "Rocket")
-	float DestroyTime = 3.f; // Time before the rocket is destroyed
 
 
 };
