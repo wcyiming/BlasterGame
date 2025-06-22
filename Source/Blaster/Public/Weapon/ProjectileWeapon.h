@@ -21,7 +21,10 @@ public:
 private:
 
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
-	TSubclassOf<class AActor> ProjectileClass;
+	TSubclassOf<class AProjectile> ProjectileClass;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
+	TSubclassOf<AProjectile> ServerSideRewindProjectileClass;
 
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	float ProjectileSpeed = 3000.f;

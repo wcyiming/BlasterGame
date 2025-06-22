@@ -6,6 +6,13 @@
 #include "GameFramework/PlayerController.h"
 #include "BlasterPlayerController.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHighPingDelegate, bool, bPingTooHigh);
+
+
+class UInputAction;
+struct FInputActionValue;
+class UInputMappingContext;
+
 /**
  * 
  */
@@ -27,6 +34,7 @@ public:
 
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void Tick(float DeltaTime) override;
+	void CheckPing();
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void CheckTimeSync(float DeltaTime);
@@ -37,6 +45,13 @@ public:
 	void HandleMatchHasStarted();
 	void HandleCooldown();
 
+	float SingleTripTime = 0.f;
+
+	FHighPingDelegate HighPingDelegate;
+
+	void ShowReturnToMainMenu();
+
+	void BroadcastElim(APlayerState* Attacker, APlayerState* Victim);
 protected:
 	virtual void BeginPlay() override;
 	void SetHUDTime();
@@ -65,6 +80,12 @@ protected:
 
 	UFUNCTION(Client, Reliable)
 	void ClientJoinMidgame(FName StateOfMatch, float Warmup, float Match, float Cooldown, float StartingTime);
+
+	void HighPingWarning();
+	void StopHighPingWarning();
+
+	UFUNCTION(Client, Reliable)
+	void ClientElimAnnouncement(APlayerState* Attacker, APlayerState* Victim);
 
 private:
 	UPROPERTY()
@@ -99,6 +120,32 @@ private:
 	bool bInitializeDefeats = false;
 	int32 HUDGrenades = 4;
 	bool bInitializeGrenades = false;
-	
+	float HUDCarriedAmmo = 0.f;
+	bool bInitializeCarriedAmmo = false;
+	float HUDWeaponAmmo = 0.f;
+	bool bInitializeWeaponAmmo = false;
 
+	UPROPERTY(EditAnywhere, Category = HUD)
+	TSubclassOf<class UUserWidget> ReturnToMainMenuWidget;
+
+	UPROPERTY()
+	class UReturnToMenu* ReturnToMainMenu;
+
+	bool bReturnToMainMenuOpen = false;
+
+
+
+	float HighPingRunningTime = 0.f;
+	UPROPERTY(EditAnywhere)
+	float HighPingDuration = 2.f; // Duration for high ping warning
+	bool bIsHighPingWarningActive = false;
+
+	UPROPERTY(EditAnywhere)
+	float CheckPingFrequency = 20.f;
+
+	UFUNCTION(Server, Reliable)
+	void ServerReportPingStatus(bool bIsHighPing);
+
+	UPROPERTY(EditAnywhere, Category = "Ping")
+	float HighPingThreshold = 100.f; // Threshold for high ping warning in milliseconds
 };

@@ -14,6 +14,8 @@
 #include "Blaster/Public/BlasterComponents/CombatComponent.h"
 #include "Blaster/Public/GameState/BlasterGameState.h"
 #include "Blaster/Public/PlayerState/BlasterPlayerState.h"
+#include "Blaster/Public/HUD/ReturnToMenu.h"
+#include "Components/Image.h"
 
 void ABlasterPlayerController::BeginPlay() {
 	Super::BeginPlay();
@@ -30,6 +32,25 @@ void ABlasterPlayerController::Tick(float DeltaTime) {
 
 	CheckTimeSync(DeltaTime);
 	PollInit();
+
+
+	CheckPing();
+
+}
+
+void ABlasterPlayerController::CheckPing() {
+	PlayerState = PlayerState == nullptr ? GetPlayerState<ABlasterPlayerState>() : PlayerState;
+	if (PlayerState) {
+		if (PlayerState->GetCompressedPing() * 4 > HighPingThreshold && !bIsHighPingWarningActive) {
+			HighPingWarning();
+			bIsHighPingWarningActive = true;
+			ServerReportPingStatus(true);
+		} else if (PlayerState->GetCompressedPing() * 4 <= HighPingThreshold && bIsHighPingWarningActive) {
+			StopHighPingWarning();
+			bIsHighPingWarningActive = false;
+			ServerReportPingStatus(false);
+		}
+	}
 }
 
 void ABlasterPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const {
@@ -47,7 +68,81 @@ void ABlasterPlayerController::PollInit() {
 				if(bInitializeDefeats) SetHUDDefeats(HUDDefeats);
 				if(bInitializeGrenades) SetHUDGrenades(HUDGrenades);
 				if(bInitializeShield) SetHUDShield(HUDShield, HUDMaxShield);
+				if (bInitializeWeaponAmmo) {
+					SetHUDWeaponAmmo(HUDWeaponAmmo);
+				}
+				if (bInitializeCarriedAmmo) {
+					SetHUDCarriedAmmo(HUDCarriedAmmo);
+				}
 			}
+		}
+	}
+}
+
+void ABlasterPlayerController::HighPingWarning() {
+	BlasterHUD = BlasterHUD == nullptr ? Cast<ABlasterHUD>(GetHUD()) : BlasterHUD;
+	if (BlasterHUD && BlasterHUD->CharacterOverlay) {
+		if (BlasterHUD->CharacterOverlay->HighPingImage && BlasterHUD->CharacterOverlay->HighPingAnimation) {
+			BlasterHUD->CharacterOverlay->HighPingImage->SetOpacity(1.f);
+			BlasterHUD->CharacterOverlay->PlayAnimation(BlasterHUD->CharacterOverlay->HighPingAnimation);
+		}
+	}
+
+}
+
+void ABlasterPlayerController::StopHighPingWarning() {
+	BlasterHUD = BlasterHUD == nullptr ? Cast<ABlasterHUD>(GetHUD()) : BlasterHUD;
+	if (BlasterHUD && BlasterHUD->CharacterOverlay) {
+		if (BlasterHUD->CharacterOverlay->HighPingImage) {
+			BlasterHUD->CharacterOverlay->HighPingImage->SetOpacity(0.f);
+			if (BlasterHUD->CharacterOverlay->HighPingAnimation && BlasterHUD->CharacterOverlay->IsAnimationPlaying(BlasterHUD->CharacterOverlay->HighPingAnimation)) {
+				BlasterHUD->CharacterOverlay->StopAnimation(BlasterHUD->CharacterOverlay->HighPingAnimation);
+			}
+		}
+	}
+}
+
+void ABlasterPlayerController::ShowReturnToMainMenu() {
+	if (ReturnToMainMenuWidget == nullptr) return;
+	if (ReturnToMainMenu == nullptr) {
+		ReturnToMainMenu = CreateWidget<UReturnToMenu>(this, ReturnToMainMenuWidget);
+	}
+	if (ReturnToMainMenu) {
+		bReturnToMainMenuOpen = !bReturnToMainMenuOpen;
+		if (bReturnToMainMenuOpen) {
+			ReturnToMainMenu->MenuSetup();
+		} else {
+			ReturnToMainMenu->MenuTearDown();
+		}
+	}
+}
+
+void ABlasterPlayerController::BroadcastElim(APlayerState* Attacker, APlayerState* Victim) {
+	ClientElimAnnouncement(Attacker, Victim);
+}
+
+void ABlasterPlayerController::ClientElimAnnouncement_Implementation(APlayerState* Attacker, APlayerState* Victim) {
+	APlayerState* Self = GetPlayerState<APlayerState>();
+	if (Attacker && Victim && Self) {
+		BlasterHUD = BlasterHUD == nullptr ? Cast<ABlasterHUD>(GetHUD()) : BlasterHUD;
+		if (BlasterHUD) {
+			if (Attacker == Self && Victim != Self) {
+				BlasterHUD->AddElimAnnouncement("You", Victim->GetPlayerName());
+				return;
+			}
+			if (Victim == Self && Attacker != Self) {
+				BlasterHUD->AddElimAnnouncement(Attacker->GetPlayerName(), "you");
+				return;
+			}
+			if (Attacker == Victim && Attacker == Self) {
+				BlasterHUD->AddElimAnnouncement("You", "yourself");
+				return;
+			}
+			if (Attacker == Victim && Attacker != Self) {
+				BlasterHUD->AddElimAnnouncement(Attacker->GetPlayerName(), "themselves");
+				return;
+			}
+			BlasterHUD->AddElimAnnouncement(Attacker->GetPlayerName(), Victim->GetPlayerName());
 		}
 	}
 }
@@ -188,6 +283,9 @@ void ABlasterPlayerController::SetHUDWeaponAmmo(int32 Ammo) {
 			FString AmmoString = FString::Printf(TEXT("%d"), Ammo);
 			BlasterHUD->CharacterOverlay->WeaponAmmoAmount->SetText(FText::FromString(AmmoString));
 		}
+	} else {
+		bInitializeWeaponAmmo = true;
+		HUDWeaponAmmo = Ammo;
 	}
 }
 
@@ -198,6 +296,9 @@ void ABlasterPlayerController::SetHUDCarriedAmmo(int32 Ammo) {
 			FString AmmoString = FString::Printf(TEXT("%d"), Ammo);
 			BlasterHUD->CharacterOverlay->CarriedAmmoAmount->SetText(FText::FromString(AmmoString));
 		}
+	} else {
+		bInitializeCarriedAmmo = true;
+		HUDCarriedAmmo = Ammo;
 	}
 }
 
@@ -267,7 +368,8 @@ void ABlasterPlayerController::ServerRequestServerTime_Implementation(float Time
 
 void ABlasterPlayerController::ClientReportServerTime_Implementation(float TimeOfClientRequest, float TimeServerReceivedClientRequest) {
 	float RoundTripTime = GetWorld()->GetTimeSeconds() - TimeOfClientRequest;
-	float CurrentServerTime = TimeServerReceivedClientRequest + (RoundTripTime * 0.5f);
+	SingleTripTime = RoundTripTime * 0.5f; // Half of the round trip time
+	float CurrentServerTime = TimeServerReceivedClientRequest + SingleTripTime;
 	ClientServerDelta = CurrentServerTime - GetWorld()->GetTimeSeconds();
 }
 
@@ -276,6 +378,11 @@ float ABlasterPlayerController::GetServerTime() {
 		return GetWorld()->GetTimeSeconds();
 	}
 	return GetWorld()->GetTimeSeconds() + ClientServerDelta;
+}
+
+
+void ABlasterPlayerController::ServerReportPingStatus_Implementation(bool bIsHighPing) {
+	HighPingDelegate.Broadcast(bIsHighPing);
 }
 
 void ABlasterPlayerController::ReceivedPlayer() {

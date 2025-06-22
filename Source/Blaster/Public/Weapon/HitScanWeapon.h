@@ -26,11 +26,6 @@ protected:
 	UPROPERTY(EditAnywhere)
 	USoundCue* HitSound;
 
-	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
-	float Damage = 20.f;
-
-	FVector TraceEndWithScatter(const FVector& TraceStart, const FVector& HitTarget, float ScatterAngle = 0.0f);
-
 private:
 
 	UPROPERTY(EditAnywhere)
@@ -42,11 +37,7 @@ private:
 	UPROPERTY(EditAnywhere)
 	USoundCue* FireSound;
 
-	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
-	float DistanceToSphere = 1000.f;
-	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
-	float SphereRadius = 75.f;
-	UPROPERTY(EditAnywhere, Category = "Weapon Scatter")
-	bool bUseScatter = false;
+
+
 	
 };

@@ -19,6 +19,17 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void Destroyed() override;
 
+	bool bUseServerSideRewind = false; // Whether to use server-side rewind for this projectile
+	FVector_NetQuantize TraceStart;
+	FVector_NetQuantize100 InitialVelocity;
+
+	UPROPERTY(EditAnywhere)
+	float InitialSpeed = 15000;
+
+	float Damage = 20.f;
+	float HeadShotDamage = 50.f;
+
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -36,8 +47,6 @@ protected:
 		const FHitResult& Hit
 	);
 
-	UPROPERTY(EditAnywhere)
-	float Damage = 20.f;
 
 	UPROPERTY(EditAnywhere)
 	class UParticleSystem* ImpactParticles;
@@ -64,7 +73,6 @@ protected:
 	float DamageInnerRadius = 200.f; // Inner radius for full damage
 	UPROPERTY(EditAnywhere)
 	float DamageOuterRadius = 500.f; // Outer radius for reduced damage
-
 
 private:
 

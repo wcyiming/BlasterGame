@@ -11,6 +11,8 @@
 
 #include "BlasterCharacter.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLeftGame);
+
 class UInputAction;
 struct FInputActionValue;
 class USpringArmComponent;
@@ -25,6 +27,8 @@ class BLASTER_API ABlasterCharacter : public ACharacter, public IInteractWithCro
 public:
 	// Sets default values for this character's properties
 	ABlasterCharacter();
+
+	void InitHitboxes();
 
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
@@ -64,6 +68,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* ThrowGrenadeAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* ESCAction;
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	void RotateInPlace(float DeltaTime);
@@ -75,15 +82,16 @@ public:
 	void PlayElimMontage();
 	void PlayReloadMontage();
 	void PlayThrowGrenadeMontage();
+	void PlaySwapMontage();
 
 	virtual void OnRep_ReplicatedMovement() override;
 
 
 	//Called to end the game for this character
-	void Elim();
+	void Elim(bool bPlayerLeftGame);
 
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastElim();
+	void MulticastElim(bool bPlayerLeftGame);
 
 	virtual void Destroyed() override;
 
@@ -96,6 +104,18 @@ public:
 	void UpdateHUDHealth();
 
 	void UpdateHUDShield();
+
+	void SpawnDefaultWeapon();
+	void UpdateHUDWeaponAmmo();
+
+	// server rewind
+	UPROPERTY()
+	TMap<FName, class UBoxComponent*> HitCollisionBoxes;
+
+	FOnLeftGame OnLeftGame;
+
+	UFUNCTION(Server, Reliable)
+	void ServerLeaveGame();
 
 protected:
 	// Called when the game starts or when spawned
@@ -117,6 +137,8 @@ protected:
 	void AimButtonReleased(const FInputActionValue& Value);
 	void GrenadeButtonPressed(const FInputActionValue& Value);
 
+	void DropOrDestroyWeapon(AWeapon* Weapon);
+
 	void AimOffset(float DeltaTime);
 	void CalculateAO_Pitch();
 	virtual void Jump() override;
@@ -125,6 +147,7 @@ protected:
 	void AttackButtonReleased(const FInputActionValue& Value);
 
 	void ReloadButtonPressed(const FInputActionValue& Value);
+	void ESCButtonPressed(const FInputActionValue& Value);
 
 	void SimProxiesTurn(float DeltaTime);
 
@@ -133,6 +156,64 @@ protected:
 	
 	// Poll for any relelvant classes and initialize our HUD
 	void PollInit();
+
+	// Server rewind
+	// Hit boxes
+
+	UPROPERTY(EditAnywhere)
+	class UBoxComponent* head;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* pelvis;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* spine_02;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* spine_03;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* upperarm_l;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* upperarm_r;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* lowerarm_l;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* lowerarm_r;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* hand_l;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* hand_r;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* backpack;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* blanket;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* thigh_l;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* thigh_r;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* calf_l;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* calf_r;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* foot_l;
+
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* foot_r;
+
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
@@ -154,11 +235,18 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerEquipButtonPressed();
 
+
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCombatComponent* Combat;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UBuffComponent* Buff;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	class ULagCompensationComponent* LagCompensation;
+
+
 
 	float AO_YAW;
 	float InterpAO_Yaw;
@@ -182,6 +270,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	class UAnimMontage* ThrowGrenadeMontage;
+
+	UPROPERTY(EditAnywhere, Category = Combat)
+	class UAnimMontage* SwapMontage;
 
 	void HideCameraIfCharacterClose();
 
@@ -229,6 +320,8 @@ private:
 
 	void ElimTimerFinished();
 
+	bool bLeftGame = false;
+
 	//Dissolve effect
 
 	UPROPERTY(VisibleAnywhere, Category = "Elim")
@@ -266,6 +359,10 @@ private:
 	UPROPERTY(VisibleAnywhere)
 	UStaticMeshComponent* AttachedGrenade;
 
+	//Default weapon
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<class AWeapon> DefaultWeaponClass;
+
 //Get Set
 public:
 	void SetOverlappingWeapon(AWeapon* Weapon);
@@ -292,4 +389,6 @@ public:
 	FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
 	FORCEINLINE UStaticMeshComponent* GetAttachedGrenade() const { return AttachedGrenade; }
 	FORCEINLINE UBuffComponent* GetBuff() const { return Buff; }
+	bool IslocallyReloading();
+	FORCEINLINE ULagCompensationComponent* GetLagCompensation() const { return LagCompensation; }
 };
